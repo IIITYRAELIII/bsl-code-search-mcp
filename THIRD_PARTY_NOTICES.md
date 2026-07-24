@@ -16,4 +16,3 @@ https://github.com/IIITYRAELIII/zoekt
 
 Zoekt is licensed under the Apache License 2.0. Its own dependency notices and
 license terms remain available in the linked source repository.
-

@@ -8,4 +8,3 @@
 - Keep the Zoekt fork and official MCP SDK pinned in `go.mod`.
 - Verify unit tests, an MCP protocol probe, and a real BSL corpus before publishing.
 - Commit and push verified changes directly to `main`.
-

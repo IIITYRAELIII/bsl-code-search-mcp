@@ -14,6 +14,8 @@ func registerTools(server *mcp.Server, service *SearchService) {
 			Description: "Search indexed 1C/BSL source code with Zoekt query syntax. " +
 				"Use repo:^NAME$ to select a configuration, file: to filter paths, " +
 				"case:yes for exact case, and regex: for regular expressions. " +
+				"Start with broad identifier terms before exact punctuation or regex. " +
+				"A zero result proves only that this lexical query found no match; broaden or rephrase it before inferring absence. " +
 				"This tool is read-only and searches only user-indexed local dumps.",
 			Annotations: &mcp.ToolAnnotations{
 				ReadOnlyHint:   true,

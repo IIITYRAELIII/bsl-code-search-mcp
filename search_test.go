@@ -62,6 +62,9 @@ func TestSearchReturnsStructuredMatches(t *testing.T) {
 	if result.FileCount != 1 || result.MatchCount != 1 {
 		t.Fatalf("unexpected counts: %+v", result)
 	}
+	if result.Guidance == "" {
+		t.Fatal("search response is missing inference guidance")
+	}
 	if result.Files[0].Repository != "demo" || result.Files[0].Matches[0].LineNumber != 7 {
 		t.Fatalf("unexpected structured match: %+v", result.Files[0])
 	}

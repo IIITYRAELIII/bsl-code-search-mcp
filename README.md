@@ -92,6 +92,10 @@ file:\.bsl$ case:yes "ОписаниеТипов"
 regex:"ИзменитьРеквизиты\\("
 ```
 
+Start with broad identifiers and narrow the query after inspecting the first
+results. A zero exact or regular-expression result proves only that the lexical
+query did not match; it is not evidence that an API pattern is impossible.
+
 Maintainers can run a one-shot protocol query against an existing index:
 
 ```powershell

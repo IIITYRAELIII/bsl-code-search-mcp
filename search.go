@@ -21,7 +21,7 @@ type SearchService struct {
 }
 
 type SearchRequest struct {
-	Query        string `json:"query" jsonschema:"Zoekt query syntax, for example ДинамическийСписок or repo:^ERP$ file:\\.bsl$ case:yes ДинамическийСписок"`
+	Query        string `json:"query" jsonschema:"Zoekt lexical query. Start broad, for example ДинамическийСписок or repo:^ERP$ file:\\.bsl$ ДинамическийСписок, then narrow with case:yes or regex:"`
 	MaxFiles     int    `json:"maxFiles,omitempty" jsonschema:"Maximum returned files; default 20, maximum 100"`
 	MaxMatches   int    `json:"maxMatches,omitempty" jsonschema:"Maximum returned line matches across files; default 100, maximum 1000"`
 	ContextLines int    `json:"contextLines,omitempty" jsonschema:"Context lines before and after each match; default 2, maximum 10"`
@@ -29,6 +29,7 @@ type SearchRequest struct {
 
 type SearchResponse struct {
 	Query          string       `json:"query"`
+	Guidance       string       `json:"guidance"`
 	DurationMillis int64        `json:"durationMillis"`
 	FileCount      int          `json:"fileCount"`
 	MatchCount     int          `json:"matchCount"`
@@ -162,6 +163,7 @@ func (s *SearchService) Search(ctx context.Context, input SearchRequest) (*Searc
 
 	response := &SearchResponse{
 		Query:          raw,
+		Guidance:       "Lexical code-search evidence only. A zero result is not proof of absence; broaden or rephrase exact/regex queries before drawing conclusions. Found code is an observation, not an executed runtime test.",
 		DurationMillis: time.Since(started).Milliseconds(),
 		Files:          make([]SearchFile, 0),
 		Stats: SearchStats{

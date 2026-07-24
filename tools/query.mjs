@@ -8,7 +8,6 @@ function argument(name) {
   }
   return process.argv[index + 1];
 }
-
 const child = spawn(argument("--server"), [
   "serve",
   "--index", argument("--index"),
@@ -78,4 +77,3 @@ try {
   ]);
   if (child.exitCode === null) child.kill();
 }
-

@@ -25,8 +25,8 @@ func TestSearchReturnsStructuredMatches(t *testing.T) {
 		}
 
 		var reply backendSearchReply
-		reply.Result.Stats.FileCount = 1
-		reply.Result.Stats.MatchCount = 1
+		reply.Result.FileCount = 1
+		reply.Result.MatchCount = 1
 		reply.Result.Files = []backendFileMatch{{
 			FileName:   "ОбщиеМодули/Тест/Модуль.bsl",
 			Repository: "demo",

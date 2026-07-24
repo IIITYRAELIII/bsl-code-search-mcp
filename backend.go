@@ -15,17 +15,31 @@ import (
 )
 
 type Backend struct {
-	command *exec.Cmd
-	client  *BackendClient
-	done    chan struct{}
-	waitErr error
-	release func()
+	command   *exec.Cmd
+	client    *BackendClient
+	done      chan struct{}
+	waitErr   error
+	release   func()
+	shards    int
+	documents int
 }
 
 func StartBackend(ctx context.Context, indexDir, zoektBin string, logs io.Writer) (*Backend, error) {
 	executable, err := resolveZoektExecutable(zoektBin, "zoekt-webserver")
 	if err != nil {
 		return nil, err
+	}
+	shardPaths, err := filepath.Glob(filepath.Join(indexDir, "*.zoekt"))
+	if err != nil {
+		return nil, fmt.Errorf("count index shards: %w", err)
+	}
+	manifest, err := loadManifest(indexDir)
+	if err != nil {
+		return nil, err
+	}
+	expectedDocuments := 0
+	for _, corpus := range manifest.Corpora {
+		expectedDocuments += corpus.Files
 	}
 	port, err := reserveLocalPort()
 	if err != nil {
@@ -51,9 +65,11 @@ func StartBackend(ctx context.Context, indexDir, zoektBin string, logs io.Writer
 		return nil, fmt.Errorf("bind Zoekt backend lifetime: %w", err)
 	}
 	backend := &Backend{
-		command: command,
-		done:    make(chan struct{}),
-		release: release,
+		command:   command,
+		done:      make(chan struct{}),
+		release:   release,
+		shards:    len(shardPaths),
+		documents: expectedDocuments,
 		client: &BackendClient{
 			baseURL: baseURL,
 			http:    &http.Client{Timeout: 30 * time.Second},
@@ -101,6 +117,7 @@ func (b *Backend) waitReady(ctx context.Context, timeout time.Duration) error {
 	defer deadline.Stop()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+	var firstUnmanagedReady time.Time
 	for {
 		select {
 		case <-ctx.Done():
@@ -110,15 +127,28 @@ func (b *Backend) waitReady(ctx context.Context, timeout time.Duration) error {
 		case <-b.done:
 			return fmt.Errorf("Zoekt backend exited before becoming ready: %v", b.waitErr)
 		case <-ticker.C:
-			request, err := http.NewRequestWithContext(ctx, http.MethodGet, b.client.baseURL+"/healthz", nil)
-			if err != nil {
-				return err
+			var estimate struct {
+				Result struct {
+					ShardFilesConsidered int
+				}
 			}
-			response, err := b.client.http.Do(request)
-			if err == nil {
-				response.Body.Close()
-				if response.StatusCode == http.StatusOK {
+			err := b.client.post(ctx, "/api/search", map[string]any{
+				"Q": "TRUE",
+				"Opts": map[string]any{
+					"EstimateDocCount": true,
+				},
+			}, &estimate)
+			if err == nil && estimate.Result.ShardFilesConsidered > 0 {
+				if b.documents > 0 &&
+					estimate.Result.ShardFilesConsidered >= b.documents {
 					return nil
+				}
+				if b.documents == 0 {
+					if firstUnmanagedReady.IsZero() {
+						firstUnmanagedReady = time.Now()
+					} else if time.Since(firstUnmanagedReady) >= 500*time.Millisecond {
+						return nil
+					}
 				}
 			}
 		}

@@ -101,17 +101,13 @@ type backendSearchOptions struct {
 
 type backendSearchReply struct {
 	Result struct {
-		Stats backendSearchStats
-		Files []backendFileMatch
+		FileCount       int
+		FilesConsidered int
+		FilesLoaded     int
+		ShardsScanned   int
+		MatchCount      int
+		Files           []backendFileMatch
 	}
-}
-
-type backendSearchStats struct {
-	FileCount       int
-	FilesConsidered int
-	FilesLoaded     int
-	ShardsScanned   int
-	MatchCount      int
 }
 
 type backendFileMatch struct {
@@ -167,12 +163,13 @@ func (s *SearchService) Search(ctx context.Context, input SearchRequest) (*Searc
 	response := &SearchResponse{
 		Query:          raw,
 		DurationMillis: time.Since(started).Milliseconds(),
+		Files:          make([]SearchFile, 0),
 		Stats: SearchStats{
-			FilesConsidered:  reply.Result.Stats.FilesConsidered,
-			FilesLoaded:      reply.Result.Stats.FilesLoaded,
-			ShardsScanned:    reply.Result.Stats.ShardsScanned,
-			MatchCount:       reply.Result.Stats.MatchCount,
-			FilesWithMatches: reply.Result.Stats.FileCount,
+			FilesConsidered:  reply.Result.FilesConsidered,
+			FilesLoaded:      reply.Result.FilesLoaded,
+			ShardsScanned:    reply.Result.ShardsScanned,
+			MatchCount:       reply.Result.MatchCount,
+			FilesWithMatches: reply.Result.FileCount,
 		},
 	}
 	for _, file := range reply.Result.Files {
@@ -209,6 +206,7 @@ func (s *SearchService) ListCorpora(ctx context.Context) (*CorpusListResponse, e
 	}
 	response := &CorpusListResponse{
 		IndexDirectory: s.indexDir,
+		Corpora:        make([]CorpusInfo, 0),
 		QueryExamples: []string{
 			`ДинамическийСписок`,
 			`case:yes "ОписаниеТипов"`,

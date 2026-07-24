@@ -91,6 +91,16 @@ file:\.bsl$ case:yes "ОписаниеТипов"
 regex:"ИзменитьРеквизиты\\("
 ```
 
+Maintainers can run a one-shot protocol query against an existing index:
+
+```powershell
+node .\tools\query.mjs `
+  --server .\bin\bsl-code-search-mcp.exe `
+  --index "C:\path\to\index" `
+  --zoekt-bin "C:\path\to\release" `
+  --query 'repo:^my-configuration$ ДинамическийСписок'
+```
+
 ## Build
 
 Requirements:

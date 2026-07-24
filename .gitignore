@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/coverage.out
+/*.exe
+/*.zip
+/.bsl-code-search/
+

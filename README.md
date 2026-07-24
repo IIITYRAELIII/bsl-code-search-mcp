@@ -76,7 +76,8 @@ If `--index` was used while indexing, pass the same argument after `serve` or
 set `BSL_CODE_SEARCH_INDEX`.
 
 The server keeps the index open for fast repeated searches. Its MCP tools are
-strictly read-only:
+strictly read-only and carry the standard MCP `readOnlyHint` and
+`idempotentHint` annotations:
 
 - `search_code` runs bounded Zoekt queries and returns structured file/line
   matches with context;

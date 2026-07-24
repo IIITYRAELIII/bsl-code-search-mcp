@@ -117,6 +117,10 @@ try {
   assert(tools.length === 2, `Expected 2 tools, got ${tools.length}`);
   assert(tools.includes("search_code"), "Missing search_code");
   assert(tools.includes("list_corpora"), "Missing list_corpora");
+  for (const tool of listed.tools) {
+    assert(tool.annotations?.readOnlyHint === true, `${tool.name} is not marked read-only`);
+    assert(tool.annotations?.idempotentHint === true, `${tool.name} is not marked idempotent`);
+  }
 
   const corpora = structured(await request("tools/call", {
     name: "list_corpora",

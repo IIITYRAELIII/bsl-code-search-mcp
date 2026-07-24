@@ -15,6 +15,10 @@ func registerTools(server *mcp.Server, service *SearchService) {
 				"Use repo:^NAME$ to select a configuration, file: to filter paths, " +
 				"case:yes for exact case, and regex: for regular expressions. " +
 				"This tool is read-only and searches only user-indexed local dumps.",
+			Annotations: &mcp.ToolAnnotations{
+				ReadOnlyHint:   true,
+				IdempotentHint: true,
+			},
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input SearchRequest) (*mcp.CallToolResult, *SearchResponse, error) {
 			output, err := service.Search(ctx, input)
@@ -27,6 +31,10 @@ func registerTools(server *mcp.Server, service *SearchService) {
 			Name: "list_corpora",
 			Description: "List the local configuration dumps currently attached to this read-only code-search MCP, " +
 				"including document and index statistics. Paths and source contents are not returned.",
+			Annotations: &mcp.ToolAnnotations{
+				ReadOnlyHint:   true,
+				IdempotentHint: true,
+			},
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, *CorpusListResponse, error) {
 			output, err := service.ListCorpora(ctx)

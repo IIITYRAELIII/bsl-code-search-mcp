@@ -117,6 +117,13 @@ try {
   assert(tools.length === 2, `Expected 2 tools, got ${tools.length}`);
   assert(tools.includes("search_code"), "Missing search_code");
   assert(tools.includes("list_corpora"), "Missing list_corpora");
+  const searchTool = listed.tools.find((tool) => tool.name === "search_code");
+  assert(searchTool.description.includes("version differs"), "Task-family version guidance is missing from the tool");
+  assert(searchTool.description.includes("implementation templates"), "Template priority is missing from the tool");
+  assert(
+    searchTool.inputSchema?.properties?.corpus?.description?.includes("configuration family"),
+    "Corpus schema does not explain configuration-family selection",
+  );
   for (const tool of listed.tools) {
     assert(tool.annotations?.readOnlyHint === true, `${tool.name} is not marked read-only`);
     assert(tool.annotations?.idempotentHint === true, `${tool.name} is not marked idempotent`);
@@ -135,6 +142,8 @@ try {
   assert(corpora.defaultCorpus === "probe-config", "Selected default corpus is missing");
   assert(corpora.corpora[0].name === "probe-config", "Default corpus is not listed first");
   assert(corpora.corpora[0].default === true, "Default corpus is not marked");
+  assert(corpora.scopeGuidance.includes("configuration family"), "Configuration-family priority is missing");
+  assert(corpora.scopeGuidance.includes("implementation templates"), "Template priority is missing");
 
   const searchStarted = performance.now();
   const found = structured(await request("tools/call", {
@@ -149,6 +158,7 @@ try {
   assert(found.fileCount === 1, `Expected one result file, got ${found.fileCount}`);
   assert(found.scope === "default", "Unqualified search did not use the default corpus");
   assert(found.corpus === "probe-config", "Search response omitted the default corpus");
+  assert(found.guidance.includes("configuration family"), "Default-search correction guidance is missing");
   assert(found.files[0].path === "ДинамическийСписок.bsl", "Result path is not corpus-relative");
   assert(found.files[0].matches[0].lineNumber > 0, "Line number is missing");
 
@@ -162,6 +172,7 @@ try {
   assert(other.fileCount === 1, "Explicit non-default corpus was not searched");
   assert(other.scope === "explicit-corpus", "Explicit corpus scope is missing");
   assert(other.corpus === "other-config", "Explicit corpus is missing from the response");
+  assert(other.guidance.includes("exact version match"), "Version-family guidance is missing");
 
   const excluded = structured(await request("tools/call", {
     name: "search_code",

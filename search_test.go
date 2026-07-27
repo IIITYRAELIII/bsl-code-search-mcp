@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -164,6 +165,25 @@ func TestScopeQueryRequiresDefaultForMultipleCorpora(t *testing.T) {
 		SearchRequest{Query: "ДинамическийСписок"},
 	); err == nil {
 		t.Fatal("expected missing default error")
+	}
+}
+
+func TestGuidanceExplainsConfigurationAndTemplatePriority(t *testing.T) {
+	defaultGuidance := guidanceForScope("default")
+	for _, expected := range []string{
+		"reusable implementation templates",
+		"configuration family",
+		"version differs",
+	} {
+		if !strings.Contains(defaultGuidance, expected) {
+			t.Fatalf("default guidance is missing %q: %s", expected, defaultGuidance)
+		}
+	}
+	explicitGuidance := guidanceForScope("explicit-corpus")
+	for _, expected := range []string{"configuration family", "exact version match"} {
+		if !strings.Contains(explicitGuidance, expected) {
+			t.Fatalf("explicit guidance is missing %q: %s", expected, explicitGuidance)
+		}
 	}
 }
 

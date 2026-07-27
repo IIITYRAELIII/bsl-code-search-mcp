@@ -8,6 +8,14 @@ function argument(name) {
   }
   return process.argv[index + 1];
 }
+
+function optionalArgument(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 && index + 1 < process.argv.length
+    ? process.argv[index + 1]
+    : undefined;
+}
+
 const child = spawn(argument("--server"), [
   "serve",
   "--index", argument("--index"),
@@ -17,6 +25,11 @@ const child = spawn(argument("--server"), [
   windowsHide: true,
 });
 const query = argument("--query");
+const corpus = optionalArgument("--corpus");
+const allCorpora = process.argv.includes("--all-corpora");
+if (corpus && allCorpora) {
+  throw new Error("--corpus and --all-corpora cannot be used together");
+}
 const pending = new Map();
 let nextId = 1;
 
@@ -56,14 +69,17 @@ try {
   });
   child.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n');
   const started = performance.now();
+  const searchArguments = {
+    query,
+    maxFiles: 10,
+    maxMatches: 100,
+    contextLines: 1,
+  };
+  if (corpus) searchArguments.corpus = corpus;
+  if (allCorpora) searchArguments.allCorpora = true;
   const result = await request("tools/call", {
     name: "search_code",
-    arguments: {
-      query,
-      maxFiles: 10,
-      maxMatches: 100,
-      contextLines: 1,
-    },
+    arguments: searchArguments,
   });
   console.log(JSON.stringify({
     elapsedMillis: Number((performance.now() - started).toFixed(1)),

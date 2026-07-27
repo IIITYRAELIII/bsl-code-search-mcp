@@ -23,7 +23,7 @@ type SearchService struct {
 
 type SearchRequest struct {
 	Query        string `json:"query" jsonschema:"Zoekt lexical query without a corpus filter unless deliberately overriding the default. Start broad, then narrow with file:, case:yes or regex:"`
-	Corpus       string `json:"corpus,omitempty" jsonschema:"Exact attached corpus name. Omit to search the participant-selected default corpus."`
+	Corpus       string `json:"corpus,omitempty" jsonschema:"Exact attached corpus name. For configuration-specific facts or examples, select the corpus from the task's configuration family even when its version differs. Omit for reusable implementation templates or when no relevant family is attached; that searches the participant-selected default."`
 	AllCorpora   bool   `json:"allCorpora,omitempty" jsonschema:"Search every attached corpus. Use only for an explicitly cross-configuration task."`
 	MaxFiles     int    `json:"maxFiles,omitempty" jsonschema:"Maximum returned files; default 20, maximum 100"`
 	MaxMatches   int    `json:"maxMatches,omitempty" jsonschema:"Maximum returned line matches across files; default 100, maximum 1000"`
@@ -69,6 +69,7 @@ type SearchStats struct {
 type CorpusListResponse struct {
 	IndexDirectory string       `json:"indexDirectory"`
 	DefaultCorpus  string       `json:"defaultCorpus"`
+	ScopeGuidance  string       `json:"scopeGuidance"`
 	Corpora        []CorpusInfo `json:"corpora"`
 	Total          CorpusTotals `json:"total"`
 	QueryExamples  []string     `json:"queryExamples"`
@@ -187,7 +188,7 @@ func (s *SearchService) Search(ctx context.Context, input SearchRequest) (*Searc
 		EffectiveQuery: effectiveQuery,
 		Scope:          scope,
 		Corpus:         corpus,
-		Guidance:       "Searches the participant-selected default corpus unless corpus, allCorpora, or an explicit repo: filter overrides it. Use another corpus only when the task is about that configuration. Lexical code-search evidence only: a zero result is not proof of absence, and found code is not an executed runtime test.",
+		Guidance:       guidanceForScope(scope),
 		DurationMillis: time.Since(started).Milliseconds(),
 		Files:          make([]SearchFile, 0),
 		Stats: SearchStats{
@@ -233,7 +234,10 @@ func (s *SearchService) ListCorpora(ctx context.Context) (*CorpusListResponse, e
 	response := &CorpusListResponse{
 		IndexDirectory: s.indexDir,
 		DefaultCorpus:  effectiveDefaultCorpus(manifest),
-		Corpora:        make([]CorpusInfo, 0),
+		ScopeGuidance: "For configuration-specific facts and examples, select the attached corpus from the task's configuration family; its version need not match exactly. " +
+			"For reusable implementation templates or a 'do something similar' search, prefer the default corpus. " +
+			"If no relevant family is attached, fall back to the default and disclose that limitation.",
+		Corpora: make([]CorpusInfo, 0),
 		QueryExamples: []string{
 			`ДинамическийСписок`,
 			`case:yes "ОписаниеТипов"`,
@@ -266,6 +270,23 @@ func (s *SearchService) ListCorpora(ctx context.Context) (*CorpusListResponse, e
 		return response.Corpora[i].Name < response.Corpora[j].Name
 	})
 	return response, nil
+}
+
+func guidanceForScope(scope string) string {
+	evidence := "Lexical code-search evidence only: a zero result is not proof of absence, and found code is not an executed runtime test."
+	switch scope {
+	case "default":
+		return "This search used the participant-selected default corpus. That is the preferred source for reusable implementation templates and 'do something similar' searches. " +
+			"If the current task instead targets a known configuration family and a matching corpus is attached, rerun with corpus even when its version differs. " + evidence
+	case "explicit-corpus":
+		return "This search used an explicitly selected configuration corpus. For configuration-specific facts and examples, matching the task's configuration family matters more than an exact version match; verify any version-sensitive detail separately. " + evidence
+	case "all-corpora":
+		return "This deliberate cross-configuration search spans every attached corpus. Do not treat mixed results as belonging to the task's configuration without checking each repository. " + evidence
+	case "explicit-query-filter":
+		return "This search used an explicit repo: filter. Apply the same priority as corpus selection: the task's configuration family for configuration-specific facts, but the default corpus for reusable implementation templates. " + evidence
+	default:
+		return evidence
+	}
 }
 
 func scopeQuery(

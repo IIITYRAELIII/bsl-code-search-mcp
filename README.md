@@ -104,7 +104,15 @@ Examples:
 {"query":"regex:\"ИзменитьРеквизиты\\\\(\"","allCorpora":true}
 ```
 
-Use another corpus only when the task is about that configuration.
+Corpus priority depends on the search purpose:
+
+- for configuration-specific facts or examples, choose the attached corpus from
+  the task's configuration family; its version does not need to match exactly;
+- for reusable implementation templates and "do something similar" searches,
+  omit `corpus` and use the participant-selected default;
+- if no corpus from the relevant family is attached, fall back to the default
+  and disclose that limitation.
+
 `allCorpora: true` is an explicit cross-configuration search. Existing
 `repo:^NAME$` filters remain supported, but cannot be combined with `corpus` or
 `allCorpora`. Start with broad identifiers and narrow the query after inspecting
@@ -121,6 +129,9 @@ node .\tools\query.mjs `
   --zoekt-bin "C:\path\to\release" `
   --query 'repo:^my-configuration$ ДинамическийСписок'
 ```
+
+Add `--corpus "another-configuration"` for a configuration-specific query, or
+`--all-corpora` for a deliberate cross-configuration query.
 
 ## Build
 

@@ -12,8 +12,9 @@ func registerTools(server *mcp.Server, service *SearchService) {
 		&mcp.Tool{
 			Name: "search_code",
 			Description: "Search indexed 1C/BSL source code with Zoekt query syntax. " +
-				"Queries are automatically scoped to the participant-selected default corpus. " +
-				"Set corpus only when the task is about another configuration; set allCorpora only for a deliberate cross-configuration search. " +
+				"Scope priority: for configuration-specific facts or examples, set corpus to the attached corpus from the task's configuration family, even when its version differs; " +
+				"for reusable implementation templates or a 'do something similar' search, omit corpus to use the participant-selected default. " +
+				"If no relevant family is attached, use the default and disclose the fallback. Set allCorpora only for a deliberate cross-configuration search. " +
 				"An explicit repo:^NAME$ query filter is also accepted for compatibility. Use file: to filter paths, " +
 				"case:yes for exact case, and regex: for regular expressions. " +
 				"Start with broad identifier terms before exact punctuation or regex. " +
@@ -35,7 +36,8 @@ func registerTools(server *mcp.Server, service *SearchService) {
 			Name: "list_corpora",
 			Description: "List the local configuration dumps currently attached to this read-only code-search MCP, " +
 				"including the participant-selected default corpus and index statistics. " +
-				"Call this before searching; paths and source contents are not returned.",
+				"Call this before searching: configuration-specific searches should select the task's configuration family even when versions differ, " +
+				"while reusable implementation-template searches should use the default. Paths and source contents are not returned.",
 			Annotations: &mcp.ToolAnnotations{
 				ReadOnlyHint:   true,
 				IdempotentHint: true,

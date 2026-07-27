@@ -68,7 +68,8 @@ try {
         --zoekt-bin $ZoektBin `
         --name 'probe-config' `
         --source $corpus `
-        --extensions bsl
+        --extensions bsl `
+        --default
     if ($LASTEXITCODE -ne 0) {
         throw 'Failed to index the probe corpus.'
     }

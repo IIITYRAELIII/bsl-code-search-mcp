@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 )
 
@@ -65,8 +66,136 @@ func TestSearchReturnsStructuredMatches(t *testing.T) {
 	if result.Guidance == "" {
 		t.Fatal("search response is missing inference guidance")
 	}
+	if result.Scope != "explicit-query-filter" || result.EffectiveQuery != result.Query {
+		t.Fatalf("explicit repository scope was not preserved: %+v", result)
+	}
 	if result.Files[0].Repository != "demo" || result.Files[0].Matches[0].LineNumber != 7 {
 		t.Fatalf("unexpected structured match: %+v", result.Files[0])
+	}
+}
+
+func TestScopeQueryUsesParticipantDefaultAndExplicitOverrides(t *testing.T) {
+	manifest := &indexManifest{
+		SchemaVersion: 1,
+		DefaultCorpus: "ERP-2.5.27.58",
+		Corpora: []manifestCorpus{
+			{Name: "ERP-2.5.27.58"},
+			{Name: "ERPУХ"},
+		},
+	}
+	tests := []struct {
+		name      string
+		input     SearchRequest
+		query     string
+		scope     string
+		corpus    string
+		wantError bool
+	}{
+		{
+			name:   "default",
+			input:  SearchRequest{Query: "ДинамическийСписок"},
+			query:  `repo:"^ERP-2\.5\.27\.58$" ДинамическийСписок`,
+			scope:  "default",
+			corpus: "ERP-2.5.27.58",
+		},
+		{
+			name:   "explicit corpus",
+			input:  SearchRequest{Query: "ДинамическийСписок", Corpus: "erpух"},
+			query:  `repo:"^ERPУХ$" ДинамическийСписок`,
+			scope:  "explicit-corpus",
+			corpus: "ERPУХ",
+		},
+		{
+			name:  "all corpora",
+			input: SearchRequest{Query: "ДинамическийСписок", AllCorpora: true},
+			query: "ДинамическийСписок",
+			scope: "all-corpora",
+		},
+		{
+			name:  "legacy repo filter",
+			input: SearchRequest{Query: `repo:^ERPУХ$ ДинамическийСписок`},
+			query: `repo:^ERPУХ$ ДинамическийСписок`,
+			scope: "explicit-query-filter",
+		},
+		{
+			name: "conflicting selectors",
+			input: SearchRequest{
+				Query:  `repo:^ERPУХ$ ДинамическийСписок`,
+				Corpus: "ERPУХ",
+			},
+			wantError: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			query, scope, corpus, err := scopeQuery(manifest, test.input.Query, test.input)
+			if test.wantError {
+				if err == nil {
+					t.Fatal("expected scope validation error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if query != test.query || scope != test.scope || corpus != test.corpus {
+				t.Fatalf(
+					"unexpected scope: query=%q scope=%q corpus=%q",
+					query,
+					scope,
+					corpus,
+				)
+			}
+		})
+	}
+}
+
+func TestScopeQueryRequiresDefaultForMultipleCorpora(t *testing.T) {
+	manifest := &indexManifest{
+		SchemaVersion: 1,
+		Corpora: []manifestCorpus{
+			{Name: "ERP"},
+			{Name: "ERPУХ"},
+		},
+	}
+	if _, _, _, err := scopeQuery(
+		manifest,
+		"ДинамическийСписок",
+		SearchRequest{Query: "ДинамическийСписок"},
+	); err == nil {
+		t.Fatal("expected missing default error")
+	}
+}
+
+func TestSetDefaultCorpusPersistsCanonicalName(t *testing.T) {
+	indexDir := t.TempDir()
+	manifest := &indexManifest{
+		SchemaVersion: 1,
+		Corpora: []manifestCorpus{
+			{Name: "ERP-2.5.27.58"},
+			{Name: "ERPУХ"},
+		},
+	}
+	if err := saveManifest(indexDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := setDefaultCorpus(indexDir, "erp-2.5.27.58")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canonical != "ERP-2.5.27.58" {
+		t.Fatalf("unexpected canonical corpus: %q", canonical)
+	}
+	loaded, err := loadManifest(indexDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.DefaultCorpus != canonical {
+		t.Fatalf(
+			"default was not persisted in %s: %q",
+			filepath.Join(indexDir, manifestFileName),
+			loaded.DefaultCorpus,
+		)
 	}
 }
 

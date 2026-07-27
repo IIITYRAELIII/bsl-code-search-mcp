@@ -17,6 +17,7 @@ type IndexReport struct {
 	Repository     string   `json:"repository"`
 	Source         string   `json:"source"`
 	IndexDirectory string   `json:"indexDirectory"`
+	Default        bool     `json:"default"`
 	Extensions     []string `json:"extensions"`
 	IndexedFiles   int      `json:"indexedFiles"`
 	IndexedBytes   int64    `json:"indexedBytes"`
@@ -31,6 +32,7 @@ func runIndex(args []string, stdout, stderr io.Writer) error {
 	indexDir := fs.String("index", "", "directory containing the Zoekt index")
 	extensions := fs.String("extensions", "bsl", "comma-separated extensions to index")
 	zoektBin := fs.String("zoekt-bin", "", "directory containing zoekt-index")
+	makeDefault := fs.Bool("default", false, "make this corpus the default search scope")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -70,7 +72,15 @@ func runIndex(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	report, err := buildIndex(*name, resolvedSource, resolvedIndex, exts, *zoektBin, stderr)
+	report, err := buildIndex(
+		*name,
+		resolvedSource,
+		resolvedIndex,
+		exts,
+		*zoektBin,
+		*makeDefault,
+		stderr,
+	)
 	if err != nil {
 		return err
 	}
@@ -119,7 +129,13 @@ func parseExtensions(value string) ([]string, error) {
 	return result, nil
 }
 
-func buildIndex(name, source, indexDir string, extensions []string, zoektBin string, stderr io.Writer) (*IndexReport, error) {
+func buildIndex(
+	name, source, indexDir string,
+	extensions []string,
+	zoektBin string,
+	makeDefault bool,
+	stderr io.Writer,
+) (*IndexReport, error) {
 	started := time.Now()
 	executable, err := resolveZoektExecutable(zoektBin, "zoekt-index")
 	if err != nil {
@@ -129,6 +145,7 @@ func buildIndex(name, source, indexDir string, extensions []string, zoektBin str
 		Repository:     name,
 		Source:         source,
 		IndexDirectory: indexDir,
+		Default:        makeDefault,
 		Extensions:     extensions,
 	}
 	report.IndexedFiles, report.IndexedBytes, err = scanSource(source, extensions)
@@ -158,9 +175,14 @@ func buildIndex(name, source, indexDir string, extensions []string, zoektBin str
 		Files:       report.IndexedFiles,
 		SourceBytes: report.IndexedBytes,
 		IndexedAt:   time.Now(),
-	}); err != nil {
+	}, makeDefault); err != nil {
 		return nil, err
 	}
+	manifest, err := loadManifest(indexDir)
+	if err != nil {
+		return nil, err
+	}
+	report.Default = strings.EqualFold(name, effectiveDefaultCorpus(manifest))
 	report.DurationMillis = time.Since(started).Milliseconds()
 	return report, nil
 }

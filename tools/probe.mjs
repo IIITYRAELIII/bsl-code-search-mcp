@@ -132,20 +132,36 @@ try {
   assert(corpora.corpora.some((item) => item.name === "probe-config"), "Primary corpus is missing");
   assert(corpora.corpora.some((item) => item.name === "other-config"), "Second corpus is missing");
   assert(corpora.total.repositories === 2, "Expected two independently selected corpora");
+  assert(corpora.defaultCorpus === "probe-config", "Selected default corpus is missing");
+  assert(corpora.corpora[0].name === "probe-config", "Default corpus is not listed first");
+  assert(corpora.corpora[0].default === true, "Default corpus is not marked");
 
   const searchStarted = performance.now();
   const found = structured(await request("tools/call", {
     name: "search_code",
     arguments: {
-      query: "repo:^probe-config$ case:yes ДинамическийСписок",
+      query: "case:yes ДинамическийСписок",
       maxFiles: 10,
       contextLines: 1,
     },
   }));
   const searchMillis = performance.now() - searchStarted;
   assert(found.fileCount === 1, `Expected one result file, got ${found.fileCount}`);
+  assert(found.scope === "default", "Unqualified search did not use the default corpus");
+  assert(found.corpus === "probe-config", "Search response omitted the default corpus");
   assert(found.files[0].path === "ДинамическийСписок.bsl", "Result path is not corpus-relative");
   assert(found.files[0].matches[0].lineNumber > 0, "Line number is missing");
+
+  const other = structured(await request("tools/call", {
+    name: "search_code",
+    arguments: {
+      query: "ДругойКорпус",
+      corpus: "other-config",
+    },
+  }));
+  assert(other.fileCount === 1, "Explicit non-default corpus was not searched");
+  assert(other.scope === "explicit-corpus", "Explicit corpus scope is missing");
+  assert(other.corpus === "other-config", "Explicit corpus is missing from the response");
 
   const excluded = structured(await request("tools/call", {
     name: "search_code",

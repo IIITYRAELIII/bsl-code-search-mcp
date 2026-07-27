@@ -16,6 +16,7 @@ const manifestFileName = "bsl-code-search.json"
 
 type indexManifest struct {
 	SchemaVersion int              `json:"schemaVersion"`
+	DefaultCorpus string           `json:"defaultCorpus,omitempty"`
 	Corpora       []manifestCorpus `json:"corpora"`
 }
 
@@ -44,10 +45,30 @@ func loadManifest(indexDir string) (*indexManifest, error) {
 	if manifest.SchemaVersion != 1 {
 		return nil, fmt.Errorf("unsupported index manifest schema %d", manifest.SchemaVersion)
 	}
+	if manifest.DefaultCorpus != "" {
+		canonical, ok := findCorpusName(&manifest, manifest.DefaultCorpus)
+		if !ok {
+			return nil, fmt.Errorf(
+				"index manifest default corpus %q is not attached",
+				manifest.DefaultCorpus,
+			)
+		}
+		manifest.DefaultCorpus = canonical
+	}
 	return &manifest, nil
 }
 
 func saveManifest(indexDir string, manifest *indexManifest) error {
+	if manifest.DefaultCorpus != "" {
+		canonical, ok := findCorpusName(manifest, manifest.DefaultCorpus)
+		if !ok {
+			return fmt.Errorf(
+				"default corpus %q is not attached",
+				manifest.DefaultCorpus,
+			)
+		}
+		manifest.DefaultCorpus = canonical
+	}
 	sort.Slice(manifest.Corpora, func(i, j int) bool {
 		return manifest.Corpora[i].Name < manifest.Corpora[j].Name
 	})
@@ -68,7 +89,7 @@ func saveManifest(indexDir string, manifest *indexManifest) error {
 	return nil
 }
 
-func updateManifest(indexDir string, corpus manifestCorpus) error {
+func updateManifest(indexDir string, corpus manifestCorpus, makeDefault bool) error {
 	manifest, err := loadManifest(indexDir)
 	if err != nil {
 		return err
@@ -84,7 +105,45 @@ func updateManifest(indexDir string, corpus manifestCorpus) error {
 	if !replaced {
 		manifest.Corpora = append(manifest.Corpora, corpus)
 	}
+	if makeDefault {
+		manifest.DefaultCorpus = corpus.Name
+	}
 	return saveManifest(indexDir, manifest)
+}
+
+func setDefaultCorpus(indexDir, name string) (string, error) {
+	manifest, err := loadManifest(indexDir)
+	if err != nil {
+		return "", err
+	}
+	canonical, ok := findCorpusName(manifest, name)
+	if !ok {
+		return "", fmt.Errorf("corpus %q is not attached", name)
+	}
+	manifest.DefaultCorpus = canonical
+	if err := saveManifest(indexDir, manifest); err != nil {
+		return "", err
+	}
+	return canonical, nil
+}
+
+func findCorpusName(manifest *indexManifest, name string) (string, bool) {
+	for _, corpus := range manifest.Corpora {
+		if strings.EqualFold(corpus.Name, name) {
+			return corpus.Name, true
+		}
+	}
+	return "", false
+}
+
+func effectiveDefaultCorpus(manifest *indexManifest) string {
+	if manifest.DefaultCorpus != "" {
+		return manifest.DefaultCorpus
+	}
+	if len(manifest.Corpora) == 1 {
+		return manifest.Corpora[0].Name
+	}
+	return ""
 }
 
 func scanSource(source string, extensions []string) (files int, bytes int64, err error) {

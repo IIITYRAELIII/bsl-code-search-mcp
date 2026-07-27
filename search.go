@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +22,9 @@ type SearchService struct {
 }
 
 type SearchRequest struct {
-	Query        string `json:"query" jsonschema:"Zoekt lexical query. Start broad, for example ДинамическийСписок or repo:^ERP$ file:\\.bsl$ ДинамическийСписок, then narrow with case:yes or regex:"`
+	Query        string `json:"query" jsonschema:"Zoekt lexical query without a corpus filter unless deliberately overriding the default. Start broad, then narrow with file:, case:yes or regex:"`
+	Corpus       string `json:"corpus,omitempty" jsonschema:"Exact attached corpus name. Omit to search the participant-selected default corpus."`
+	AllCorpora   bool   `json:"allCorpora,omitempty" jsonschema:"Search every attached corpus. Use only for an explicitly cross-configuration task."`
 	MaxFiles     int    `json:"maxFiles,omitempty" jsonschema:"Maximum returned files; default 20, maximum 100"`
 	MaxMatches   int    `json:"maxMatches,omitempty" jsonschema:"Maximum returned line matches across files; default 100, maximum 1000"`
 	ContextLines int    `json:"contextLines,omitempty" jsonschema:"Context lines before and after each match; default 2, maximum 10"`
@@ -29,6 +32,9 @@ type SearchRequest struct {
 
 type SearchResponse struct {
 	Query          string       `json:"query"`
+	EffectiveQuery string       `json:"effectiveQuery"`
+	Scope          string       `json:"scope"`
+	Corpus         string       `json:"corpus,omitempty"`
 	Guidance       string       `json:"guidance"`
 	DurationMillis int64        `json:"durationMillis"`
 	FileCount      int          `json:"fileCount"`
@@ -62,6 +68,7 @@ type SearchStats struct {
 
 type CorpusListResponse struct {
 	IndexDirectory string       `json:"indexDirectory"`
+	DefaultCorpus  string       `json:"defaultCorpus"`
 	Corpora        []CorpusInfo `json:"corpora"`
 	Total          CorpusTotals `json:"total"`
 	QueryExamples  []string     `json:"queryExamples"`
@@ -69,6 +76,7 @@ type CorpusListResponse struct {
 
 type CorpusInfo struct {
 	Name        string   `json:"name"`
+	Default     bool     `json:"default"`
 	Extensions  []string `json:"extensions"`
 	SourceFiles int      `json:"sourceFiles"`
 	SourceBytes int64    `json:"sourceBytes"`
@@ -124,6 +132,8 @@ type backendFileMatch struct {
 	}
 }
 
+var repositoryFilterPattern = regexp.MustCompile(`(?i)(^|[\s(])repo:`)
+
 func NewSearchService(indexDir string, client *BackendClient) *SearchService {
 	return &SearchService{indexDir: indexDir, client: client}
 }
@@ -145,11 +155,22 @@ func (s *SearchService) Search(ctx context.Context, input SearchRequest) (*Searc
 	if err != nil {
 		return nil, err
 	}
+	manifest := &indexManifest{SchemaVersion: 1}
+	if !repositoryFilterPattern.MatchString(raw) && !input.AllCorpora {
+		manifest, err = loadManifest(s.indexDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	effectiveQuery, scope, corpus, err := scopeQuery(manifest, raw, input)
+	if err != nil {
+		return nil, err
+	}
 
 	started := time.Now()
 	var reply backendSearchReply
 	err = s.client.post(ctx, "/api/search", backendSearchRequest{
-		Q: raw,
+		Q: effectiveQuery,
 		Opts: backendSearchOptions{
 			TotalMaxMatchCount:   maxMatches,
 			MaxDocDisplayCount:   maxFiles,
@@ -163,7 +184,10 @@ func (s *SearchService) Search(ctx context.Context, input SearchRequest) (*Searc
 
 	response := &SearchResponse{
 		Query:          raw,
-		Guidance:       "Lexical code-search evidence only. A zero result is not proof of absence; broaden or rephrase exact/regex queries before drawing conclusions. Found code is an observation, not an executed runtime test.",
+		EffectiveQuery: effectiveQuery,
+		Scope:          scope,
+		Corpus:         corpus,
+		Guidance:       "Searches the participant-selected default corpus unless corpus, allCorpora, or an explicit repo: filter overrides it. Use another corpus only when the task is about that configuration. Lexical code-search evidence only: a zero result is not proof of absence, and found code is not an executed runtime test.",
 		DurationMillis: time.Since(started).Milliseconds(),
 		Files:          make([]SearchFile, 0),
 		Stats: SearchStats{
@@ -208,6 +232,7 @@ func (s *SearchService) ListCorpora(ctx context.Context) (*CorpusListResponse, e
 	}
 	response := &CorpusListResponse{
 		IndexDirectory: s.indexDir,
+		DefaultCorpus:  effectiveDefaultCorpus(manifest),
 		Corpora:        make([]CorpusInfo, 0),
 		QueryExamples: []string{
 			`ДинамическийСписок`,
@@ -224,6 +249,7 @@ func (s *SearchService) ListCorpora(ctx context.Context) (*CorpusListResponse, e
 	for _, corpus := range manifest.Corpora {
 		info := CorpusInfo{
 			Name:        corpus.Name,
+			Default:     strings.EqualFold(corpus.Name, response.DefaultCorpus),
 			Extensions:  corpus.Extensions,
 			SourceFiles: corpus.Files,
 			SourceBytes: corpus.SourceBytes,
@@ -234,9 +260,54 @@ func (s *SearchService) ListCorpora(ctx context.Context) (*CorpusListResponse, e
 		response.Corpora = append(response.Corpora, info)
 	}
 	sort.Slice(response.Corpora, func(i, j int) bool {
+		if response.Corpora[i].Default != response.Corpora[j].Default {
+			return response.Corpora[i].Default
+		}
 		return response.Corpora[i].Name < response.Corpora[j].Name
 	})
 	return response, nil
+}
+
+func scopeQuery(
+	manifest *indexManifest,
+	raw string,
+	input SearchRequest,
+) (effective, scope, corpus string, err error) {
+	hasRepositoryFilter := repositoryFilterPattern.MatchString(raw)
+	requestedCorpus := strings.TrimSpace(input.Corpus)
+	if requestedCorpus != input.Corpus {
+		return "", "", "", errors.New("corpus must not have leading or trailing spaces")
+	}
+	if requestedCorpus != "" && input.AllCorpora {
+		return "", "", "", errors.New("corpus and allCorpora cannot be used together")
+	}
+	if hasRepositoryFilter && (requestedCorpus != "" || input.AllCorpora) {
+		return "", "", "", errors.New(
+			"query repo: filter cannot be combined with corpus or allCorpora",
+		)
+	}
+	if hasRepositoryFilter {
+		return raw, "explicit-query-filter", "", nil
+	}
+	if input.AllCorpora {
+		return raw, "all-corpora", "", nil
+	}
+	if requestedCorpus == "" {
+		requestedCorpus = effectiveDefaultCorpus(manifest)
+		if requestedCorpus == "" {
+			return "", "", "", errors.New(
+				"no default corpus is selected; run set-default --name NAME or pass corpus explicitly",
+			)
+		}
+		scope = "default"
+	} else {
+		scope = "explicit-corpus"
+	}
+	canonical, ok := findCorpusName(manifest, requestedCorpus)
+	if !ok {
+		return "", "", "", fmt.Errorf("corpus %q is not attached", requestedCorpus)
+	}
+	return `repo:"^` + regexp.QuoteMeta(canonical) + `$" ` + raw, scope, canonical, nil
 }
 
 func (c *BackendClient) post(ctx context.Context, path string, input, output any) error {

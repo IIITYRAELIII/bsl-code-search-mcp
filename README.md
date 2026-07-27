@@ -26,8 +26,13 @@ Give each dump a stable local name:
 ```powershell
 .\bsl-code-search-mcp.exe index `
   --name "my-configuration" `
-  --source "C:\path\to\configuration\sources"
+  --source "C:\path\to\configuration\sources" `
+  --default
 ```
+
+`--default` selects the configuration used for ordinary unqualified searches.
+Every user chooses their own default; public releases do not prescribe ERP,
+ERP Holding, ZUP, or any other configuration.
 
 The default indexes only `*.bsl`. To include metadata XML too:
 
@@ -39,9 +44,15 @@ The default indexes only `*.bsl`. To include metadata XML too:
 ```
 
 Run the same command again after the dump changes. Add another configuration
-with a different `--name`; both will remain searchable in the same local
-index. Use `--index PATH` if you do not want the platform-specific user cache
-directory.
+with a different `--name`; both will remain searchable in the same local index.
+Omit `--default` to preserve the current choice. Change the default without
+reindexing:
+
+```powershell
+.\bsl-code-search-mcp.exe set-default --name "my-configuration"
+```
+
+Use `--index PATH` if you do not want the platform-specific user cache directory.
 
 The index is local generated data. It can be large (roughly twice the indexed
 BSL text in the ERP Holding test corpus), must not be committed, and can be
@@ -53,9 +64,9 @@ deleted and rebuilt from the original source dump.
 .\bsl-code-search-mcp.exe status
 ```
 
-This reads a small local manifest and lists corpus names, selected extensions,
-file counts, shard counts, and sizes without starting the search backend or
-returning source paths.
+This reads a small local manifest and lists the selected default, corpus names,
+extensions, file counts, shard counts, and sizes without starting the search
+backend or returning source paths.
 
 ## 3. Connect the MCP client
 
@@ -80,21 +91,26 @@ strictly read-only and carry the standard MCP `readOnlyHint` and
 `idempotentHint` annotations:
 
 - `search_code` runs bounded Zoekt queries and returns structured file/line
-  matches with context;
-- `list_corpora` lists attached corpus names and index statistics.
+  matches with context. A query without a corpus selector is automatically
+  restricted to the participant-selected default;
+- `list_corpora` lists the default, attached corpus names and index statistics.
 
 Examples:
 
 ```text
-ДинамическийСписок
-repo:^my-configuration$ ДинамическийСписок
-file:\.bsl$ case:yes "ОписаниеТипов"
-regex:"ИзменитьРеквизиты\\("
+{"query":"ДинамическийСписок"}
+{"query":"ДинамическийСписок","corpus":"another-configuration"}
+{"query":"file:\\.bsl$ case:yes \"ОписаниеТипов\""}
+{"query":"regex:\"ИзменитьРеквизиты\\\\(\"","allCorpora":true}
 ```
 
-Start with broad identifiers and narrow the query after inspecting the first
-results. A zero exact or regular-expression result proves only that the lexical
-query did not match; it is not evidence that an API pattern is impossible.
+Use another corpus only when the task is about that configuration.
+`allCorpora: true` is an explicit cross-configuration search. Existing
+`repo:^NAME$` filters remain supported, but cannot be combined with `corpus` or
+`allCorpora`. Start with broad identifiers and narrow the query after inspecting
+the first results. A zero exact or regular-expression result proves only that
+the lexical query did not match; it is not evidence that an API pattern is
+impossible.
 
 Maintainers can run a one-shot protocol query against an existing index:
 

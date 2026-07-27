@@ -37,6 +37,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runServe(ctx, args[1:], stderr)
 	case "index":
 		return runIndex(args[1:], stdout, stderr)
+	case "set-default":
+		return runSetDefault(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(ctx, args[1:], stdout)
 	case "version", "--version", "-version":
@@ -115,7 +117,8 @@ func usage() string {
 BSL code search backed by a local Zoekt index.
 
 Usage:
-  bsl-code-search-mcp index --name NAME --source PATH [--extensions bsl,xml]
+  bsl-code-search-mcp index --name NAME --source PATH [--extensions bsl,xml] [--default]
+  bsl-code-search-mcp set-default --name NAME
   bsl-code-search-mcp status
   bsl-code-search-mcp serve
   bsl-code-search-mcp version
